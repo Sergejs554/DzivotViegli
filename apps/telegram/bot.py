@@ -156,7 +156,7 @@ def actions_kb(
 @router.message(CommandStart())
 async def on_start(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await handle_start(message)
+    
 
     # === изменено ===
     # Короткое, понятное, “красивое” приветствие без простыней текста
