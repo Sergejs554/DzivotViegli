@@ -4,12 +4,14 @@ import asyncio
 from typing import Optional, Tuple
 
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message,
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    ReplyKeyboardMarkup,          # === изменено ===
+    KeyboardButton,               # === изменено ===
 )
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import StatesGroup, State
@@ -93,6 +95,17 @@ def urgency_kb() -> InlineKeyboardMarkup:
 
 
 # === изменено ===
+# Постоянная кнопка "Меню", чтобы не писать /start
+def menu_button_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🏠 Меню")]],
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
+# === /изменено ===
+
+
+# === изменено ===
 # Никаких tel: URL — чтобы Telegram не ломал отправку клавиатуры.
 # Звонки делаем через callback: бот присылает номер текстом (он кликабельный).
 def actions_kb(
@@ -162,6 +175,22 @@ async def on_start(message: Message, state: FSMContext) -> None:
     await state.set_state(Flow.awaiting_problem)
 
 
+# === изменено ===
+@router.message(Command("menu"))
+async def on_menu_command(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Меню:", reply_markup=main_menu())
+    await state.set_state(Flow.awaiting_problem)
+
+
+@router.message(F.text == "🏠 Меню")
+async def on_menu_button(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Меню:", reply_markup=main_menu())
+    await state.set_state(Flow.awaiting_problem)
+# === /изменено ===
+
+
 @router.message(F.text == "⬅️ Назад в меню")
 async def on_back(message: Message, state: FSMContext) -> None:
     await state.clear()
@@ -216,13 +245,12 @@ async def on_urgency_anytime(callback: CallbackQuery, state: FSMContext) -> None
 async def on_ask_address(message: Message, state: FSMContext) -> None:
     await message.answer(
         "Ок. Напиши адрес одним сообщением (город, улица, дом).",
-        reply_markup=remove_kb(),
+        reply_markup=menu_button_kb(),  # === изменено ===
     )
     await state.set_state(Flow.awaiting_address)
 
 
 # === изменено ===
-# Железобетон: гео принимаем всегда, но если проблемы нет — просим сначала описать.
 @router.message(F.location)
 async def on_location_anytime(message: Message, state: FSMContext) -> None:
     loc = message.location
@@ -230,14 +258,20 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
 
     problem = data.get("problem")
     if not problem:
-        await message.answer("Сначала напиши одним сообщением, что болит/что случилось (например: «болит живот»).")
+        await message.answer(
+            "Сначала напиши одним сообщением, что болит/что случилось (например: «болит живот»).",
+            reply_markup=menu_button_kb()
+        )
         await state.set_state(Flow.awaiting_problem)
         return
 
     severe = bool(data.get("severe", False))
     await state.update_data(lat=loc.latitude, lon=loc.longitude, severe=severe)
 
-    await message.answer("Принял геолокацию. Собираю действия рядом…", reply_markup=remove_kb())
+    await message.answer(
+        "Принял геолокацию. Собираю действия рядом…",
+        reply_markup=menu_button_kb()  # === изменено ===
+    )
 
     resources = load_liepaja_resources()
     hospital = resources.get("hospital", {})
@@ -253,11 +287,9 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
         "",
     ]
 
-    # Срочно — явно подсвечиваем
     if severe:
         info_lines += ["Если станет хуже — звони 113.", "📞 113", ""]
 
-    # Дежурный врач (если есть в ресурсах)
     if duty and duty.get("phone"):
         info_lines += [
             f"👨‍⚕️ {duty.get('name', 'Дежурный врач')}",
@@ -268,7 +300,6 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
             info_lines += [notes]
         info_lines += [""]
 
-    # Клиника
     if hosp_name or hosp_addr or hosp_phone:
         info_lines += [f"🏥 {hosp_name}"]
         if hosp_addr:
@@ -285,7 +316,6 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
 
     await message.answer("\n".join([x for x in info_lines if x]), reply_markup=kb)
 
-    # возвращаемся в свободный ввод
     await state.set_state(Flow.awaiting_problem)
 # === /изменено ===
 
@@ -341,12 +371,15 @@ async def on_address(message: Message, state: FSMContext) -> None:
 
     kb = actions_kb(resources, severe=severe, from_coords=None)
 
-    await message.answer("\n".join([x for x in info_lines if x]), reply_markup=kb)
+    await message.answer(
+        "\n".join([x for x in info_lines if x]),
+        reply_markup=kb
+    )
+    await message.answer("Если нужно — жми 🏠 Меню.", reply_markup=menu_button_kb())  # === изменено ===
     await state.set_state(Flow.awaiting_problem)
 
 
 # === изменено ===
-# Звонки через callback: бот присылает номер текстом (кликабельно), без tel:
 @router.callback_query(F.data.startswith("call:"))
 async def on_call_callback(callback: CallbackQuery) -> None:
     resources = load_liepaja_resources()
@@ -362,13 +395,13 @@ async def on_call_callback(callback: CallbackQuery) -> None:
     key = callback.data.split(":", 1)[1]
 
     if key == "113":
-        await callback.message.answer("🚑 Срочно: 113\nНажми на номер, чтобы позвонить.")
+        await callback.message.answer("🚑 Срочно: 113\nНажми на номер, чтобы позвонить.", reply_markup=menu_button_kb())
         await callback.answer("113")
         return
 
     if key == "clinic":
         if hosp_phone:
-            await callback.message.answer(f"☎️ {hosp_name}\n{hosp_phone}\nНажми на номер, чтобы позвонить.")
+            await callback.message.answer(f"☎️ {hosp_name}\n{hosp_phone}\nНажми на номер, чтобы позвонить.", reply_markup=menu_button_kb())
             await callback.answer("Клиника")
         else:
             await callback.answer("Номер клиники не задан", show_alert=True)
@@ -380,7 +413,7 @@ async def on_call_callback(callback: CallbackQuery) -> None:
             notes = (duty.get("notes") or "").strip()
             if notes:
                 txt += f"\n\n{notes}"
-            await callback.message.answer(txt)
+            await callback.message.answer(txt, reply_markup=menu_button_kb())
             await callback.answer("Дежурный врач")
         else:
             await callback.answer("Номер дежурного врача не задан", show_alert=True)
@@ -396,7 +429,7 @@ async def fallback_text(message: Message, state: FSMContext) -> None:
     if not text:
         return
 
-    if text in {"🩺 Самочувствие", "🌍 Язык", "⬅️ Назад в меню"}:
+    if text in {"🩺 Самочувствие", "🌍 Язык", "⬅️ Назад в меню", "🏠 Меню"}:
         return
 
     await state.set_state(Flow.awaiting_problem)
