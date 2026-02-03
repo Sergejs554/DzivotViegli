@@ -170,7 +170,7 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
         severe=severe
     )
 
-    await message.answer("Принял геолокацию. Собираю действия рядом…", reply_markup=remove_kb())
+    await message.answer("Принял геолокацию. Собираю действия рядом…", reply_markup=remove_kb()
 
     resources = load_liepaja_resources()
     problem = data.get("problem", "плохо себя чувствую")
