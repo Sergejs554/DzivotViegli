@@ -186,9 +186,7 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
         reply_markup=kb
     )
 
-    # возвращаемся в свободный ввод
-    await state.set_state(Flow.awaiting_problem)
-    )
+    
     # оставим возможность продолжить вводом текста
     await state.set_state(Flow.awaiting_problem)
 
