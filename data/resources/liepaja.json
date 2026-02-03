@@ -3,5 +3,10 @@
     "name": "Liepājas reģionālā slimnīca",
     "address": "Slimnīcas iela 25, Liepāja",
     "phone": "+37163403222"
+  },
+  "duty_doctor": {
+    "name": "Dežūrārsts (izsaukums mājās)",
+    "phone": "+371XXXXXXXX",
+    "notes": "Izsaukums mājās, ja nav kritiski. Ja slikti - 113."
   }
 }
