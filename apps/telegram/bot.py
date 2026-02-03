@@ -220,8 +220,9 @@ async def on_start(message: Message, state: FSMContext) -> None:
     await message.answer(
         "👋 Привет! Я *DzīvotViegli*.\n"
         "⚡ *сложно → просто → действие*\n\n"
-        "📝 Напиши, что случилось (1 строка)\n"
-        "Напр.: `болит ухо` / `болит живот` / `плохо`",
+        "✍️ Напиши, что происходит сейчас.\n"
+        "🧩 Я упрощу и дам следующий шаг.",
+
         parse_mode="Markdown",
         reply_markup=main_menu(),
     )
@@ -252,12 +253,13 @@ async def on_back(message: Message, state: FSMContext) -> None:
 @router.message(F.text == "🩺 Самочувствие")
 async def on_health_menu(message: Message, state: FSMContext) -> None:
     await state.set_state(Flow.awaiting_problem)
-    await message.answer(
-        "🩺 Ок, напиши 1 строкой:\n"
-        "Напр.: `болит ухо` / `болит зуб` / `писька болит` / `температура 39`",
+        await message.answer(
+        "🩺 *Самочувствие*\n"
+        "✍️ Опиши, что беспокоит сейчас (симптомы/ощущения).",
         parse_mode="Markdown",
         reply_markup=main_menu(),
     )
+
 
 
 @router.message(F.text == "🌍 Язык")
