@@ -189,8 +189,6 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
     # оставим возможность продолжить вводом текста
     await state.set_state(Flow.awaiting_problem)
 
-    )
-    await state.set_state(Flow.awaiting_address)
 
 @router.message(Flow.awaiting_address, F.text)
 async def on_address(message: Message, state: FSMContext) -> None:
