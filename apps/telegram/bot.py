@@ -156,7 +156,7 @@ async def on_urgency_anytime(callback: CallbackQuery, state: FSMContext) -> None
     await state.set_state(Flow.awaiting_location)
     await callback.answer("Принято")
 
-@router.message(F.location)_run_module_as_main
+@router.message(F.location)
 async def on_location_anytime(message: Message, state: FSMContext) -> None:
     loc = message.location
     data = await state.get_data()
@@ -185,9 +185,6 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
         f"Вот варианты действий по ситуации «{problem}»:",
         reply_markup=kb
     )
-
-    # оставим возможность продолжить вводом текста
-    await state.set_state(Flow.awaiting_problem)
 
 
 @router.message(Flow.awaiting_address, F.text)
