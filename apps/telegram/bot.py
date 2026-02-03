@@ -10,8 +10,8 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    ReplyKeyboardMarkup,          # === изменено ===
-    KeyboardButton,               # === изменено ===
+    ReplyKeyboardMarkup,
+    KeyboardButton,
 )
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import StatesGroup, State
@@ -45,16 +45,12 @@ def load_liepaja_resources() -> dict:
                 "address": "Slimnīcas iela 25, Liepāja",
                 "phone": "+37163403222",
             },
-            # опционально добавишь в JSON:
-            # "duty_doctor": {"name":"Dežūrārsts (izsaukums mājās)", "phone":"+371...", "notes":"..."}
         }
 
 
 def google_maps_route_url(from_lat: float, from_lon: float, dest_query: str) -> str:
     dest = dest_query.replace(" ", "+")
-    return (
-        f"https://www.google.com/maps/dir/?api=1&origin={from_lat},{from_lon}&destination={dest}"
-    )
+    return f"https://www.google.com/maps/dir/?api=1&origin={from_lat},{from_lon}&destination={dest}"
 
 
 def google_maps_search_url(query: str) -> str:
@@ -94,20 +90,14 @@ def urgency_kb() -> InlineKeyboardMarkup:
     )
 
 
-# === изменено ===
-# Постоянная кнопка "Меню", чтобы не писать /start
 def menu_button_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="🏠 Меню")]],
         resize_keyboard=True,
-        one_time_keyboard=False
+        one_time_keyboard=False,
     )
-# === /изменено ===
 
 
-# === изменено ===
-# Никаких tel: URL — чтобы Telegram не ломал отправку клавиатуры.
-# Звонки делаем через callback: бот присылает номер текстом (он кликабельный).
 def actions_kb(
     resources: dict,
     severe: bool,
@@ -160,7 +150,6 @@ def actions_kb(
     buttons.append([InlineKeyboardButton(text="🚕 Такси (Bolt)", url="https://bolt.eu")])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
-# === /изменено ===
 
 
 # ---------- Handlers ----------
@@ -168,14 +157,24 @@ def actions_kb(
 async def on_start(message: Message, state: FSMContext) -> None:
     await state.clear()
     await handle_start(message)
+
+    # === изменено ===
+    # Короткое, понятное, “красивое” приветствие без простыней текста
     await message.answer(
-        "Выбери, что сейчас происходит, или просто напиши одним сообщением:",
+        "👋 Привет! Я *DzīvotViegli*.\n"
+        "Делаю сложное простым — и даю действие.\n\n"
+        "📝 Напиши, что происходит (1 строка)\n"
+        "или выбери кнопку ниже.\n\n"
+        "⚡ Формат: *сложно → просто → действие*\n"
+        "🏠 Меню — всегда под рукой",
+        parse_mode="Markdown",
         reply_markup=main_menu(),
     )
+    # === /изменено ===
+
     await state.set_state(Flow.awaiting_problem)
 
 
-# === изменено ===
 @router.message(Command("menu"))
 async def on_menu_command(message: Message, state: FSMContext) -> None:
     await state.clear()
@@ -188,7 +187,6 @@ async def on_menu_button(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("Меню:", reply_markup=main_menu())
     await state.set_state(Flow.awaiting_problem)
-# === /изменено ===
 
 
 @router.message(F.text == "⬅️ Назад в меню")
@@ -245,12 +243,11 @@ async def on_urgency_anytime(callback: CallbackQuery, state: FSMContext) -> None
 async def on_ask_address(message: Message, state: FSMContext) -> None:
     await message.answer(
         "Ок. Напиши адрес одним сообщением (город, улица, дом).",
-        reply_markup=menu_button_kb(),  # === изменено ===
+        reply_markup=menu_button_kb(),
     )
     await state.set_state(Flow.awaiting_address)
 
 
-# === изменено ===
 @router.message(F.location)
 async def on_location_anytime(message: Message, state: FSMContext) -> None:
     loc = message.location
@@ -260,7 +257,7 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
     if not problem:
         await message.answer(
             "Сначала напиши одним сообщением, что болит/что случилось (например: «болит живот»).",
-            reply_markup=menu_button_kb()
+            reply_markup=menu_button_kb(),
         )
         await state.set_state(Flow.awaiting_problem)
         return
@@ -268,10 +265,7 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
     severe = bool(data.get("severe", False))
     await state.update_data(lat=loc.latitude, lon=loc.longitude, severe=severe)
 
-    await message.answer(
-        "Принял геолокацию. Собираю действия рядом…",
-        reply_markup=menu_button_kb()  # === изменено ===
-    )
+    await message.answer("Принял геолокацию. Собираю действия рядом…", reply_markup=menu_button_kb())
 
     resources = load_liepaja_resources()
     hospital = resources.get("hospital", {})
@@ -308,16 +302,10 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
             info_lines += [f"☎️ {hosp_phone}"]
         info_lines += ["", "Вот варианты действий:"]
 
-    kb = actions_kb(
-        resources,
-        severe=severe,
-        from_coords=(loc.latitude, loc.longitude),
-    )
-
+    kb = actions_kb(resources, severe=severe, from_coords=(loc.latitude, loc.longitude))
     await message.answer("\n".join([x for x in info_lines if x]), reply_markup=kb)
 
     await state.set_state(Flow.awaiting_problem)
-# === /изменено ===
 
 
 @router.message(Flow.awaiting_address, F.text)
@@ -370,16 +358,11 @@ async def on_address(message: Message, state: FSMContext) -> None:
         info_lines += ["", "Вот варианты действий:"]
 
     kb = actions_kb(resources, severe=severe, from_coords=None)
-
-    await message.answer(
-        "\n".join([x for x in info_lines if x]),
-        reply_markup=kb
-    )
-    await message.answer("Если нужно — жми 🏠 Меню.", reply_markup=menu_button_kb())  # === изменено ===
+    await message.answer("\n".join([x for x in info_lines if x]), reply_markup=kb)
+    await message.answer("Если нужно — жми 🏠 Меню.", reply_markup=menu_button_kb())
     await state.set_state(Flow.awaiting_problem)
 
 
-# === изменено ===
 @router.callback_query(F.data.startswith("call:"))
 async def on_call_callback(callback: CallbackQuery) -> None:
     resources = load_liepaja_resources()
@@ -401,7 +384,10 @@ async def on_call_callback(callback: CallbackQuery) -> None:
 
     if key == "clinic":
         if hosp_phone:
-            await callback.message.answer(f"☎️ {hosp_name}\n{hosp_phone}\nНажми на номер, чтобы позвонить.", reply_markup=menu_button_kb())
+            await callback.message.answer(
+                f"☎️ {hosp_name}\n{hosp_phone}\nНажми на номер, чтобы позвонить.",
+                reply_markup=menu_button_kb(),
+            )
             await callback.answer("Клиника")
         else:
             await callback.answer("Номер клиники не задан", show_alert=True)
@@ -420,7 +406,6 @@ async def on_call_callback(callback: CallbackQuery) -> None:
         return
 
     await callback.answer("Ок")
-# === /изменено ===
 
 
 @router.message(F.text)
