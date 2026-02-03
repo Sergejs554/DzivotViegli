@@ -140,17 +140,21 @@ async def on_problem_text(message: Message, state: FSMContext) -> None:
     await state.set_state(Flow.awaiting_urgency)
 
 
-@router.callback_query(Flow.awaiting_urgency, F.data.startswith("urgency:"))
-async def on_urgency(callback: CallbackQuery, state: FSMContext) -> None:
+@router.callback_query(F.data.in_({"urgency:severe", "urgency:mild"}))
+async def on_urgency_anytime(callback: CallbackQuery, state: FSMContext) -> None:
     severe = (callback.data == "urgency:severe")
     await state.update_data(severe=severe)
 
+    # Визуальный фидбек, чтобы было видно, что выбор засчитан
+    label = "🔴 Срочно" if severe else "🟡 Терпимо"
+
     await callback.message.answer(
-        "Ок. Чтобы дать точные варианты рядом - пришли геолокацию или введи адрес.",
+        f"Ок. Принято: {label}.\nЧтобы дать точные варианты рядом - пришли геолокацию или введи адрес.",
         reply_markup=request_location_kb()
     )
+
     await state.set_state(Flow.awaiting_location)
-    await callback.answer()
+    await callback.answer("Принято")
 
 
 @router.message(Flow.awaiting_location, F.location)
