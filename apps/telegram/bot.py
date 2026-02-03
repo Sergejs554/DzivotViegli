@@ -157,36 +157,7 @@ async def on_urgency_anytime(callback: CallbackQuery, state: FSMContext) -> None
     await callback.answer("Принято")
 
 
-@router.message(F.location)
-async def on_location_anytime(message: Message, state: FSMContext) -> None:
-    loc = message.location
-    data = await state.get_data()
-
-    # если срочность не выбрана — считаем "терпимо"
-    severe = bool(data.get("severe", False))
-
-    await state.update_data(
-        lat=loc.latitude,
-        lon=loc.longitude,
-        severe=severe
-    )
-
-    await message.answer("Принял геолокацию. Собираю действия рядом…", reply_markup=remove_kb())
-
-    resources = load_liepaja_resources()
-    problem = data.get("problem", "плохо себя чувствую")
-
-    kb = actions_kb(
-        resources,
-        severe=severe,
-        from_coords=(loc.latitude, loc.longitude)
-    )
-
-    await message.answer(
-        f"Вот варианты действий по ситуации «{problem}»:",
-        reply_markup=kb
-    )
-
+resources/liepaja.json
     # возвращаемся в свободный ввод
     await state.set_state(Flow.awaiting_problem)
 
