@@ -140,26 +140,18 @@ async def on_problem_text(message: Message, state: FSMContext) -> None:
     await state.set_state(Flow.awaiting_urgency)
 
 
-@router.callback_query(F.data.in_({"urgency:severe", "urgency:mild"}))
-async def on_urgency_anytime(callback: CallbackQuery, state: FSMContext) -> None:
+@router.callback_query(Flow.awaiting_urgency, F.data.startswith("urgency:"))
+async def on_urgency(callback: CallbackQuery, state: FSMContext) -> None:
     severe = (callback.data == "urgency:severe")
     await state.update_data(severe=severe)
 
-    # Визуальный фидбек, чтобы было видно, что выбор засчитан
-    label = "🔴 Срочно" if severe else "🟡 Терпимо"
-
     await callback.message.answer(
-        f"Ок. Принято: {label}.\nЧтобы дать точные варианты рядом - пришли геолокацию или введи адрес.",
+        "Ок. Чтобы дать точные варианты рядом - пришли геолокацию или введи адрес.",
         reply_markup=request_location_kb()
     )
-
     await state.set_state(Flow.awaiting_location)
-    await callback.answer("Принято")
+    await callback.answer()
 
-
-resources/liepaja.json
-    # возвращаемся в свободный ввод
-    await state.set_state(Flow.awaiting_problem)
 
 @router.message(F.location)
 async def on_location_anytime(message: Message, state: FSMContext) -> None:
@@ -211,6 +203,49 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
 
     # сбрасываем состояние — пользователь может писать новый запрос
     await state.clear()
+    # оставим возможность продолжить вводом текста
+    await state.set_state(Flow.awaiting_problem)
+
+
+@router.message(Flow.awaiting_location, F.text == "✍️ Ввести адрес вручную")
+async def on_ask_address(message: Message, state: FSMContext) -> None:
+    await message.answer(
+        "Ок. Напиши адрес одним сообщением (город, улица, дом).",
+        reply_markup=remove_kb()
+    )
+    await state.set_state(Flow.awaiting_address)
+
+
+@router.message(Flow.awaiting_address, F.text)
+async def on_address(message: Message, state: FSMContext) -> None:
+    addr = message.text.strip()
+    if not addr:
+        return
+
+    await state.update_data(address=addr)
+
+    data = await state.get_data()
+    resources = load_liepaja_resources()
+    severe = bool(data.get("severe"))
+    problem = data.get("problem", "плохо себя чувствую")
+
+    # без координат даём карту клиники + звонки
+    kb = actions_kb(resources, severe=severe, from_coords=None)
+
+    await message.answer(
+        f"Принял адрес: {addr}\n\nВот варианты действий по ситуации «{problem}»:",
+        reply_markup=kb
+    )
+    await state.set_state(Flow.awaiting_problem)
+
+
+# Если пользователь пишет что-то “вне состояния” - возвращаем в поток
+@router.message(F.text)
+async def fallback_text(message: Message, state: FSMContext) -> None:
+    # если вдруг слетел state - подхватим
+    await state.set_state(Flow.awaiting_problem)
+    await on_problem_text(message, state)
+
 
 async def main() -> None:
     token = os.getenv("BOT_TOKEN")
