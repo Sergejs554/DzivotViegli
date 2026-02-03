@@ -161,45 +161,56 @@ resources/liepaja.json
     # возвращаемся в свободный ввод
     await state.set_state(Flow.awaiting_problem)
 
-@router.message(Flow.awaiting_location, F.text == "✍️ Ввести адрес вручную")
-async def on_ask_address(message: Message, state: FSMContext) -> None:
-    await message.answer(
-        "Ок. Напиши адрес одним сообщением (город, улица, дом).",
-        reply_markup=remove_kb()
-    )
-    await state.set_state(Flow.awaiting_address)
-
-
-@router.message(Flow.awaiting_address, F.text)
-async def on_address(message: Message, state: FSMContext) -> None:
-    addr = message.text.strip()
-    if not addr:
-        return
-
-    await state.update_data(address=addr)
-
+@router.message(F.location)
+async def on_location_anytime(message: Message, state: FSMContext) -> None:
+    loc = message.location
     data = await state.get_data()
+
+    # если срочность не выбрана — считаем "терпимо"
+    severe = bool(data.get("severe", False))
+
+    await state.update_data(
+        lat=loc.latitude,
+        lon=loc.longitude,
+        severe=severe
+    )
+
     resources = load_liepaja_resources()
-    severe = bool(data.get("severe"))
+
     problem = data.get("problem", "плохо себя чувствую")
 
-    # без координат даём карту клиники + звонки
-    kb = actions_kb(resources, severe=severe, from_coords=None)
+    hospital = resources.get("hospital", {})
+    hosp_name = hospital.get("name", "Дежурная клиника")
+    hosp_addr = hospital.get("address", "")
+    hosp_phone = hospital.get("phone", "")
 
-    await message.answer(
-        f"Принял адрес: {addr}\n\nВот варианты действий по ситуации «{problem}»:",
-        reply_markup=kb
+    # 1) короткое подтверждение
+    await message.answer("Принял геолокацию. Вот действия рядом…", reply_markup=remove_kb())
+
+    # 2) текст с телефонами (Telegram делает номера кликабельными)
+    lines = [f"Ситуация: «{problem}»", ""]
+
+    if severe:
+        lines += ["Если станет хуже - звони 113.", "📞 113", ""]
+
+    if hosp_name or hosp_addr or hosp_phone:
+        lines += [f"🏥 {hosp_name}"]
+        if hosp_addr:
+            lines += [f"📍 {hosp_addr}"]
+        if hosp_phone:
+            lines += [f"📞 {hosp_phone}"]
+        lines += [""]
+
+    # 3) кнопки (без tel: чтобы Telegram не валил сообщение)
+    kb = actions_kb(
+        resources,
+        from_coords=(loc.latitude, loc.longitude)
     )
-    await state.set_state(Flow.awaiting_problem)
 
+    await message.answer("\n".join(lines), reply_markup=kb)
 
-# Если пользователь пишет что-то “вне состояния” - возвращаем в поток
-@router.message(F.text)
-async def fallback_text(message: Message, state: FSMContext) -> None:
-    # если вдруг слетел state - подхватим
-    await state.set_state(Flow.awaiting_problem)
-    await on_problem_text(message, state)
-
+    # сбрасываем состояние — пользователь может писать новый запрос
+    await state.clear()
 
 async def main() -> None:
     token = os.getenv("BOT_TOKEN")
