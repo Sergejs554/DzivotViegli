@@ -313,8 +313,8 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
     problem = data.get("problem")
     if not problem:
         await message.answer(
-            "Сначала напиши 1 строкой, что болит/что случилось.\n"
-            "Напр.: `болит ухо` / `болит живот`",
+        "🩺 *Самочувствие*\n"
+        "✍️ Опиши, что беспокоит сейчас (симптомы/ощущения).",
             parse_mode="Markdown",
             reply_markup=menu_button_kb(),
         )
