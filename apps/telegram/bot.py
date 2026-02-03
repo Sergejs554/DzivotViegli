@@ -17,7 +17,10 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
-from core.orchestrator import handle_start
+# ВАЖНО: если у тебя старое приветствие дублировалось — оно было тут.
+# Я убрал вызов handle_start, чтобы не было двух приветствий.
+# from core.orchestrator import handle_start
+
 from apps.telegram.ui_render import main_menu, request_location_kb, remove_kb
 
 
@@ -44,7 +47,7 @@ def load_liepaja_resources() -> dict:
                 "name": "Liepājas reģionālā slimnīca",
                 "address": "Slimnīcas iela 25, Liepāja",
                 "phone": "+37163403222",
-            },
+            }
         }
 
 
@@ -58,24 +61,81 @@ def google_maps_search_url(query: str) -> str:
     return f"https://www.google.com/maps/search/?api=1&query={q}"
 
 
-# ---------- Specialist hint ----------
+# ---------- Doctors mapping ----------
+def _contains_any(text: str, words: list[str]) -> bool:
+    return any(w in text for w in words)
+
+
 def guess_specialist(problem: str) -> str:
+    """
+    Короткая карта: симптом -> врач.
+    Не диагноз. Если резко/плохо — 113.
+    """
     p = (problem or "").lower().strip()
 
-    if any(x in p for x in ["живот", "желуд", "киш", "тошн", "рвот", "понос", "аппен", "пищев", "гастр"]):
-        return "хирург или гастроэнтеролог (если боль резкая/усиливается — 113)"
-    if any(x in p for x in ["зуб", "десн", "челюст"]):
-        return "стоматолог"
-    if any(x in p for x in ["глаз", "зрение", "веко", "конъюнкт", "линз"]):
-        return "офтальмолог"
-    if any(x in p for x in ["температ", "озноб", "простуд", "кашель", "горло", "насморк"]):
-        return "терапевт"
-    if any(x in p for x in ["голова", "мигр", "давлен", "онем", "инсульт"]):
-        return "терапевт/невролог (если резко и плохо — 113)"
-    if any(x in p for x in ["сердц", "груд", "тяжело дышать", "удуш", "не хватает воздуха"]):
-        return "при боли в груди/одышке — 113"
+    # красные флаги в тексте
+    red_flags = [
+        "не хватает воздуха", "удуш", "сильная боль", "нестерпим", "обморок",
+        "кровь", "кровотеч", "судорог", "парализ", "инсульт", "в груди жмет",
+        "синюш", "потеря сознания",
+    ]
+    if _contains_any(p, red_flags):
+        return "🚨 если резко/плохо — 113 (параллельно: приедет скорая)"
 
-    return "врач общей практики/терапевт (если ухудшается — 113)"
+    # ЖКТ
+    if _contains_any(p, ["живот", "желуд", "киш", "тошн", "рвот", "понос", "диар", "аппен", "гастр", "изжог", "пищев", "печен", "желч"]):
+        return "гастроэнтеролог; при резкой боли — хирург (если усиливается — 113)"
+
+    # зубы/челюсть
+    if _contains_any(p, ["зуб", "десн", "челюст", "кариес", "пломб", "зуб мудр"]):
+        return "стоматолог"
+
+    # ЛОР (ухо/горло/нос)
+    if _contains_any(p, ["ухо", "отит", "горло", "ангин", "нос", "гаймор", "синус", "насморк", "заложен", "пазух"]):
+        return "ЛОР (отоларинголог)"
+
+    # глаза
+    if _contains_any(p, ["глаз", "зрение", "веко", "конъюнкт", "линз", "слез", "ячмен"]):
+        return "офтальмолог"
+
+    # сердце/дыхание
+    if _contains_any(p, ["сердц", "давлен", "аритм", "пульс", "тахикард", "одыш", "задыш", "в груди", "астм", "бронх"]):
+        return "кардиолог/пульмонолог; при боли в груди/одышке — 113"
+
+    # неврология/голова
+    if _contains_any(p, ["голова", "мигр", "головокруж", "онем", "мураш", "слабост", "невралг", "судорог"]):
+        return "невролог (если внезапно/сильно — 113)"
+
+    # спина/суставы/травмы
+    if _contains_any(p, ["спина", "поясниц", "шея", "сустав", "колен", "плеч", "растяж", "ушиб", "перелом", "вывих"]):
+        return "травматолог-ортопед (при травме/переломе — травмпункт)"
+
+    # кожа
+    if _contains_any(p, ["сып", "зуд", "пятн", "аллерг", "дермат", "экзем", "крапивниц", "псориаз", "прыщ", "угр"]):
+        return "дерматолог (если отёк лица/удушье — 113)"
+
+    # мочеполовая (включая “писька”)
+    if _contains_any(p, ["письк", "пенис", "член", "яичк", "мошон", "простит", "уретр", "моч", "писать больно", "жжет", "цистит", "почки", "пах"]):
+        return "уролог (женщинам при цистите часто — гинеколог тоже)"
+
+    # женское здоровье
+    if _contains_any(p, ["месячн", "менстр", "беремен", "выделен", "боль внизу", "матк", "яичник"]):
+        return "гинеколог"
+
+    # детское (если явно)
+    if _contains_any(p, ["ребен", "ребён", "малыш", "дет"]):
+        return "педиатр (если резко/тяжело — 113)"
+
+    # психика/паника/сон
+    if _contains_any(p, ["паник", "тревог", "депресс", "не сплю", "бессон", "псих", "страх"]):
+        return "психотерапевт/психиатр (если риск себе/другим — 113)"
+
+    # температура/простуда/общее
+    if _contains_any(p, ["температ", "озноб", "простуд", "кашель", "слабост", "ломит", "горячк"]):
+        return "терапевт (если очень плохо/не сбивается — 113)"
+
+    # дефолт
+    return "терапевт (врач общей практики)"
 
 
 # ---------- Keyboards ----------
@@ -98,6 +158,7 @@ def menu_button_kb() -> ReplyKeyboardMarkup:
     )
 
 
+# Звонки делаем через callback (бот присылает номер текстом — он кликабельный)
 def actions_kb(
     resources: dict,
     severe: bool,
@@ -112,28 +173,27 @@ def actions_kb(
     hosp_addr = hospital.get("address", "")
     dest_query = f"{hosp_name} {hosp_addr}".strip()
 
-    # 🔴 Срочно — только быстрые варианты
     if severe:
-        buttons.append([InlineKeyboardButton(text="🚑 Позвонить 113", callback_data="call:113")])
+        buttons.append([InlineKeyboardButton(text="🚑 113", callback_data="call:113")])
         if hospital.get("phone"):
-            buttons.append([InlineKeyboardButton(text="☎️ Позвонить в клинику", callback_data="call:clinic")])
+            buttons.append([InlineKeyboardButton(text="☎️ Клиника", callback_data="call:clinic")])
 
         if from_coords:
             lat, lon = from_coords
             drive_url = google_maps_route_url(lat, lon, dest_query) + "&travelmode=driving"
-            buttons.append([InlineKeyboardButton(text="🚗 Маршрут до клиники", url=drive_url)])
+            buttons.append([InlineKeyboardButton(text="🚗 Маршрут", url=drive_url)])
         else:
-            buttons.append([InlineKeyboardButton(text="📍 Открыть клинику на карте", url=google_maps_search_url(dest_query))])
+            buttons.append([InlineKeyboardButton(text="📍 На карте", url=google_maps_search_url(dest_query))])
 
-        buttons.append([InlineKeyboardButton(text="🚕 Такси (Bolt)", url="https://bolt.eu")])
+        buttons.append([InlineKeyboardButton(text="🚕 Bolt", url="https://bolt.eu")])
         return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-    # 🟡 Терпимо — добавляем дежурного врача + пешком/автобус
+    # mild
     if duty and duty.get("phone"):
-        buttons.append([InlineKeyboardButton(text="👨‍⚕️ Вызвать дежурного врача", callback_data="call:duty")])
+        buttons.append([InlineKeyboardButton(text="👨‍⚕️ Дежурный врач", callback_data="call:duty")])
 
     if hospital.get("phone"):
-        buttons.append([InlineKeyboardButton(text="☎️ Позвонить в клинику", callback_data="call:clinic")])
+        buttons.append([InlineKeyboardButton(text="☎️ Клиника", callback_data="call:clinic")])
 
     if from_coords:
         lat, lon = from_coords
@@ -141,14 +201,13 @@ def actions_kb(
         transit_url = google_maps_route_url(lat, lon, dest_query) + "&travelmode=transit"
         drive_url = google_maps_route_url(lat, lon, dest_query) + "&travelmode=driving"
 
-        buttons.append([InlineKeyboardButton(text="🚶 Пешком (маршрут)", url=walk_url)])
-        buttons.append([InlineKeyboardButton(text="🚌 На автобусе (маршрут)", url=transit_url)])
-        buttons.append([InlineKeyboardButton(text="🚗 На машине (маршрут)", url=drive_url)])
+        buttons.append([InlineKeyboardButton(text="🚶 Пешком", url=walk_url)])
+        buttons.append([InlineKeyboardButton(text="🚌 Автобус", url=transit_url)])
+        buttons.append([InlineKeyboardButton(text="🚗 Машина", url=drive_url)])
     else:
-        buttons.append([InlineKeyboardButton(text="📍 Открыть клинику на карте", url=google_maps_search_url(dest_query))])
+        buttons.append([InlineKeyboardButton(text="📍 На карте", url=google_maps_search_url(dest_query))])
 
-    buttons.append([InlineKeyboardButton(text="🚕 Такси (Bolt)", url="https://bolt.eu")])
-
+    buttons.append([InlineKeyboardButton(text="🚕 Bolt", url="https://bolt.eu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -156,43 +215,37 @@ def actions_kb(
 @router.message(CommandStart())
 async def on_start(message: Message, state: FSMContext) -> None:
     await state.clear()
-    
 
-    # === изменено ===
-    # Короткое, понятное, “красивое” приветствие без простыней текста
+    # красивое короткое приветствие
     await message.answer(
         "👋 Привет! Я *DzīvotViegli*.\n"
-        "Делаю сложное простым — и даю действие.\n\n"
-        "📝 Напиши, что происходит (1 строка)\n"
-        "или выбери кнопку ниже.\n\n"
-        "⚡ Формат: *сложно → просто → действие*\n"
-        "🏠 Меню — всегда под рукой",
+        "⚡ *сложно → просто → действие*\n\n"
+        "📝 Напиши, что случилось (1 строка)\n"
+        "Напр.: `болит ухо` / `болит живот` / `плохо`",
         parse_mode="Markdown",
         reply_markup=main_menu(),
     )
-    # === /изменено ===
-
     await state.set_state(Flow.awaiting_problem)
 
 
 @router.message(Command("menu"))
 async def on_menu_command(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("Меню:", reply_markup=main_menu())
+    await message.answer("🏠 Меню:", reply_markup=main_menu())
     await state.set_state(Flow.awaiting_problem)
 
 
 @router.message(F.text == "🏠 Меню")
 async def on_menu_button(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("Меню:", reply_markup=main_menu())
+    await message.answer("🏠 Меню:", reply_markup=main_menu())
     await state.set_state(Flow.awaiting_problem)
 
 
 @router.message(F.text == "⬅️ Назад в меню")
 async def on_back(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("Ок. Напиши, что происходит, или выбери кнопку:", reply_markup=main_menu())
+    await message.answer("Ок. Выбери кнопку или напиши 1 строкой:", reply_markup=main_menu())
     await state.set_state(Flow.awaiting_problem)
 
 
@@ -200,7 +253,9 @@ async def on_back(message: Message, state: FSMContext) -> None:
 async def on_health_menu(message: Message, state: FSMContext) -> None:
     await state.set_state(Flow.awaiting_problem)
     await message.answer(
-        "Напиши, что болит или что случилось (1 строка). Например: «болит живот», «болит зуб», «плохо».",
+        "🩺 Ок, напиши 1 строкой:\n"
+        "Напр.: `болит ухо` / `болит зуб` / `писька болит` / `температура 39`",
+        parse_mode="Markdown",
         reply_markup=main_menu(),
     )
 
@@ -219,7 +274,7 @@ async def on_problem_text(message: Message, state: FSMContext) -> None:
     await state.update_data(problem=text)
 
     await message.answer(
-        f"Ок. Я правильно понимаю, что сейчас: «{text}»?\n\nНасколько срочно?",
+        f"✅ Понял: «{text}»\n\n🕒 Насколько срочно?",
         reply_markup=urgency_kb(),
     )
     await state.set_state(Flow.awaiting_urgency)
@@ -232,7 +287,7 @@ async def on_urgency_anytime(callback: CallbackQuery, state: FSMContext) -> None
 
     label = "🔴 Срочно" if severe else "🟡 Терпимо"
     await callback.message.answer(
-        f"Ок. Принято: {label}.\nЧтобы дать точные варианты рядом — пришли геолокацию или введи адрес.",
+        f"Ок: {label}\n📍 Пришли геолокацию или введи адрес.",
         reply_markup=request_location_kb(),
     )
     await state.set_state(Flow.awaiting_location)
@@ -242,7 +297,7 @@ async def on_urgency_anytime(callback: CallbackQuery, state: FSMContext) -> None
 @router.message(Flow.awaiting_location, F.text == "✍️ Ввести адрес вручную")
 async def on_ask_address(message: Message, state: FSMContext) -> None:
     await message.answer(
-        "Ок. Напиши адрес одним сообщением (город, улица, дом).",
+        "✍️ Напиши адрес 1 строкой (город, улица, дом).",
         reply_markup=menu_button_kb(),
     )
     await state.set_state(Flow.awaiting_address)
@@ -256,7 +311,9 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
     problem = data.get("problem")
     if not problem:
         await message.answer(
-            "Сначала напиши одним сообщением, что болит/что случилось (например: «болит живот»).",
+            "Сначала напиши 1 строкой, что болит/что случилось.\n"
+            "Напр.: `болит ухо` / `болит живот`",
+            parse_mode="Markdown",
             reply_markup=menu_button_kb(),
         )
         await state.set_state(Flow.awaiting_problem)
@@ -265,7 +322,7 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
     severe = bool(data.get("severe", False))
     await state.update_data(lat=loc.latitude, lon=loc.longitude, severe=severe)
 
-    await message.answer("Принял геолокацию. Собираю действия рядом…", reply_markup=menu_button_kb())
+    await message.answer("✅ Геолокация принята. Собираю варианты…", reply_markup=menu_button_kb())
 
     resources = load_liepaja_resources()
     hospital = resources.get("hospital", {})
@@ -276,13 +333,13 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
     hosp_phone = hospital.get("phone", "")
 
     info_lines = [
-        f"Ситуация: «{problem}»",
-        f"🩺 По описанию: {guess_specialist(problem)}",
+        f"📝 Ситуация: «{problem}»",
+        f"👨‍⚕️ Подходит: {guess_specialist(problem)}",
         "",
     ]
 
     if severe:
-        info_lines += ["Если станет хуже — звони 113.", "📞 113", ""]
+        info_lines += ["🚨 Если станет хуже — 113", ""]
 
     if duty and duty.get("phone"):
         info_lines += [
@@ -300,7 +357,7 @@ async def on_location_anytime(message: Message, state: FSMContext) -> None:
             info_lines += [f"📍 {hosp_addr}"]
         if hosp_phone:
             info_lines += [f"☎️ {hosp_phone}"]
-        info_lines += ["", "Вот варианты действий:"]
+        info_lines += ["", "👇 Действия:"]
 
     kb = actions_kb(resources, severe=severe, from_coords=(loc.latitude, loc.longitude))
     await message.answer("\n".join([x for x in info_lines if x]), reply_markup=kb)
@@ -329,15 +386,15 @@ async def on_address(message: Message, state: FSMContext) -> None:
     hosp_phone = hospital.get("phone", "")
 
     info_lines = [
-        f"Ситуация: «{problem}»",
-        f"🩺 По описанию: {guess_specialist(problem)}",
+        f"📝 Ситуация: «{problem}»",
+        f"👨‍⚕️ Подходит: {guess_specialist(problem)}",
         "",
-        f"Адрес (вручную): {addr}",
+        f"📍 Адрес: {addr}",
         "",
     ]
 
     if severe:
-        info_lines += ["Если станет хуже — звони 113.", "📞 113", ""]
+        info_lines += ["🚨 Если станет хуже — 113", ""]
 
     if duty and duty.get("phone"):
         info_lines += [
@@ -355,11 +412,11 @@ async def on_address(message: Message, state: FSMContext) -> None:
             info_lines += [f"📍 {hosp_addr}"]
         if hosp_phone:
             info_lines += [f"☎️ {hosp_phone}"]
-        info_lines += ["", "Вот варианты действий:"]
+        info_lines += ["", "👇 Действия:"]
 
     kb = actions_kb(resources, severe=severe, from_coords=None)
     await message.answer("\n".join([x for x in info_lines if x]), reply_markup=kb)
-    await message.answer("Если нужно — жми 🏠 Меню.", reply_markup=menu_button_kb())
+    await message.answer("🏠 Меню — кнопка снизу.", reply_markup=menu_button_kb())
     await state.set_state(Flow.awaiting_problem)
 
 
