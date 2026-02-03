@@ -1,1 +1,7 @@
-
+{
+  "hospital": {
+    "name": "Liepājas reģionālā slimnīca",
+    "address": "Slimnīcas iela 25, Liepāja",
+    "phone": "+37163403222"
+  }
+}
