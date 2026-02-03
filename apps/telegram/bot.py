@@ -156,7 +156,7 @@ async def on_urgency_anytime(callback: CallbackQuery, state: FSMContext) -> None
     await state.set_state(Flow.awaiting_location)
     await callback.answer("Принято")
 
-@router.message(F.location)(main)
+@router.message(F.location)_run_module_as_main
 async def on_location_anytime(message: Message, state: FSMContext) -> None:
     loc = message.location
     data = await state.get_data()
