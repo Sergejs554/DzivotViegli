@@ -157,29 +157,38 @@ async def on_urgency_anytime(callback: CallbackQuery, state: FSMContext) -> None
     await callback.answer("Принято")
 
 
-@router.message(Flow.awaiting_location, F.location)
-async def on_location(message: Message, state: FSMContext) -> None:
+@router.message(F.location)
+async def on_location_anytime(message: Message, state: FSMContext) -> None:
     loc = message.location
+    data = await state.get_data()
+
+    # если срочность не выбрана — считаем "терпимо"
+    severe = bool(data.get("severe", False))
+
     await state.update_data(
         lat=loc.latitude,
-        lon=loc.longitude
+        lon=loc.longitude,
+        severe=severe
     )
+
     await message.answer("Принял геолокацию. Собираю действия рядом…", reply_markup=remove_kb())
 
-    data = await state.get_data()
     resources = load_liepaja_resources()
-    severe = bool(data.get("severe"))
-
-    kb = actions_kb(resources, severe=severe, from_coords=(loc.latitude, loc.longitude))
     problem = data.get("problem", "плохо себя чувствую")
+
+    kb = actions_kb(
+        resources,
+        severe=severe,
+        from_coords=(loc.latitude, loc.longitude)
+    )
 
     await message.answer(
         f"Вот варианты действий по ситуации «{problem}»:",
         reply_markup=kb
     )
-    # оставим возможность продолжить вводом текста
-    await state.set_state(Flow.awaiting_problem)
 
+    # возвращаемся в свободный ввод
+    await state.set_state(Flow.awaiting_problem)
 
 @router.message(Flow.awaiting_location, F.text == "✍️ Ввести адрес вручную")
 async def on_ask_address(message: Message, state: FSMContext) -> None:
